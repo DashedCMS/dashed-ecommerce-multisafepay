@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 use Dashed\DashedCore\Classes\Locales;
 use Illuminate\Support\Facades\Storage;
 use Dashed\DashedCore\Models\Customsetting;
+use Dashed\DashedEcommerceCore\Classes\Countries;
 use Dashed\DashedTranslations\Models\Translation;
 use Dashed\DashedEcommerceCore\Models\OrderPayment;
 use Dashed\DashedEcommerceCore\Classes\ShoppingCart;
@@ -127,10 +128,13 @@ class MultiSafePay
                 'email' => $orderPayment->order->user->email ?? $orderPayment->order->email,
                 'first_name' => $orderPayment->order->first_name,
                 'last_name' => $orderPayment->order->last_name,
-                'address1' => $orderPayment->order->street . ' ' . $orderPayment->order->house_number,
+                'address1' => $orderPayment->order->street,
+                'house_number' => $orderPayment->order->house_nr,
                 'zip_code' => $orderPayment->order->zip_code,
                 'city' => $orderPayment->order->city,
-                'country' => $orderPayment->order->country,
+                // MultiSafePay wil een ISO-landcode; de landnaam uit de order
+                // is een vrij tekstveld en zegt de API niets.
+                'country' => Countries::getCountryIsoCode($orderPayment->order->country) ?? '',
                 'phone' => $orderPayment->order->phone_number,
                 'user_agent' => request()->userAgent(),
                 'company_name' => $orderPayment->order->company_name,
