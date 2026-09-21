@@ -107,44 +107,51 @@ class MultiSafePay
 
         $siteId = Sites::getActive();
 
+        $payload = [
+            'type' => 'redirect',
+            'gateway' => $orderPayment->paymentMethod->psp_id,
+            'order_id' => $orderPayment->order->hash,
+            'currency' => 'EUR',
+            'amount' => $orderPayment->amount * 100,
+            'description' => Translation::get('order-by-store', 'orders', 'Order by :storeName:', 'text', [
+                'storeName' => Customsetting::get('site_name'),
+            ]),
+            'payment_options' => [
+                'notification_method' => 'POST',
+                'notification_url' => route('dashed.frontend.checkout.exchange'),
+                'redirect_url' => url(ShoppingCart::getCompleteUrl()) . '?orderId=' . $orderPayment->order->hash . '&paymentId=' . $orderPayment->hash,
+                'cancel_url' => url('/'),
+            ],
+            'customer' => [
+                'ip_address' => request()->ip(),
+                'email' => $orderPayment->order->user->email ?? $orderPayment->order->email,
+                'first_name' => $orderPayment->order->first_name,
+                'last_name' => $orderPayment->order->last_name,
+                'address1' => $orderPayment->order->street . ' ' . $orderPayment->order->house_number,
+                'zip_code' => $orderPayment->order->zip_code,
+                'city' => $orderPayment->order->city,
+                'country' => $orderPayment->order->country,
+                'phone' => $orderPayment->order->phone_number,
+                'user_agent' => request()->userAgent(),
+                'company_name' => $orderPayment->order->company_name,
+            ],
+        ];
+
+        // Bestaat pas vanaf ec-core v4.134.0; dit pakket vereist ec-core niet.
+        if (method_exists($orderPayment, 'recordPspRequest')) {
+            $orderPayment->recordPspRequest($payload);
+        }
+
         $transaction = Http::withHeaders([
             'accept' => 'application/json',
             'content-type' => 'application/json',
         ])
-            ->post('https://api.multisafepay.com/v1/json/orders?api_key=' . Customsetting::get('multisafepay_api_key', $siteId), [
-                'type' => 'redirect',
-                'gateway' => $orderPayment->paymentMethod->psp_id,
-                'order_id' => $orderPayment->order->hash,
-                'currency' => 'EUR',
-                'amount' => $orderPayment->amount * 100,
-                'description' => Translation::get('order-by-store', 'orders', 'Order by :storeName:', 'text', [
-                    'storeName' => Customsetting::get('site_name'),
-                ]),
-                'payment_options' => [
-                    'notification_method' => 'POST',
-                    'notification_url' => route('dashed.frontend.checkout.exchange'),
-                    'redirect_url' => url(ShoppingCart::getCompleteUrl()) . '?orderId=' . $orderPayment->order->hash . '&paymentId=' . $orderPayment->hash,
-                    'cancel_url' => url('/'),
-                ],
-                'customer' => [
-                    'ip_address' => request()->ip(),
-                    'email' => $orderPayment->order->user->email ?? $orderPayment->order->email,
-                    'first_name' => $orderPayment->order->first_name,
-                    'last_name' => $orderPayment->order->last_name,
-                    'address1' => $orderPayment->order->street . ' ' . $orderPayment->order->house_number,
-                    'zip_code' => $orderPayment->order->zip_code,
-                    'city' => $orderPayment->order->city,
-                    'country' => $orderPayment->order->country,
-                    'phone' => $orderPayment->order->phone_number,
-                    'user_agent' => request()->userAgent(),
-                    'company_name' => $orderPayment->order->company_name,
-                ],
-            ])
+            ->post('https://api.multisafepay.com/v1/json/orders?api_key=' . Customsetting::get('multisafepay_api_key', $siteId), $payload)
             ->json();
 
-        //        if (!isset($transaction['data']['order_id'])) {
-        //            dd($transaction);
-        //        }
+        if (! isset($transaction['data']['order_id'])) {
+            throw new \RuntimeException('MultiSafePay: ' . ($transaction['error_info'] ?? 'geen order_id in het antwoord') . ' (code ' . ($transaction['error_code'] ?? '-') . ')');
+        }
 
         $orderPayment->psp_id = $transaction['data']['order_id'];
         $orderPayment->save();
